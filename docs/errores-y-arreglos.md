@@ -222,6 +222,14 @@ sesiones, descansos ni pausas. El selector de tope va de 5 en 5 hasta 1 h para
 poder poner 20 min. Y el WebView tiene ahora `WebChromeClient`: sin él no
 mostraba los `confirm()` de la web y el botón de borrar tareas no hacía nada.
 
+### El aviso de "en 10 min" llegaba a falta de 6 (v1.7)
+
+**Qué se rompía**: el servidor apuntó el aviso previo a las 18:50:01 para una
+tarea de las 19:00, pero el espejo de avisos solo leía `task_logs` cada cinco
+minutos y sin push web es el único canal del móvil: llegó a las 18:54.
+
+**Arreglo**: el espejo mira cada minuto.
+
 ## Errores de interpretación, no de código
 
 ### Iconos inventados en vez de usar la referencia

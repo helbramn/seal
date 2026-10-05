@@ -184,7 +184,9 @@ class ServicioDeVigilancia : Service() {
         // La misma guarda que el recalculo semanal: sin ella, una red que no
         // contesta acumularia un hilo colgado cada cinco minutos, y dos a la
         // vez pueden notificar el mismo aviso dos veces.
-        if (ahora - ultimoEspejo > 5 * 60_000L && !mirandoAvisos) {
+        // Cada minuto, no cada cinco: este es el unico canal de avisos del movil,
+        // y con cinco el "en 10 min" del 5-oct llego a falta de 6.
+        if (ahora - ultimoEspejo > 60_000L && !mirandoAvisos) {
             ultimoEspejo = ahora
             mirandoAvisos = true
             Thread {
