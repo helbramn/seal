@@ -8,6 +8,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -80,11 +81,14 @@ class Shell : ComponentActivity() {
                                 // avisarte': cierto, pero inutil, porque
                                 // aqui los avisos los da Seal.
                                 settings.userAgentString =
-                                    settings.userAgentString + " Seal/1.5"
+                                    settings.userAgentString + " Seal/1.6"
                                 settings.domStorageEnabled = true
                                 settings.databaseEnabled = true
                                 CookieManager.getInstance().setAcceptCookie(true)
                                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                // Sin un WebChromeClient el WebView no muestra alert/confirm de la web
+                                // y los da por cancelados: el boton de borrar tareas no hacia nada.
+                                webChromeClient = WebChromeClient()
                                 webViewClient = object : WebViewClient() {
                                     override fun onPageStarted(v: WebView?, u: String?, f: Bitmap?) {
                                         CookieManager.getInstance().flush()

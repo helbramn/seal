@@ -20,9 +20,6 @@ import com.cerrojo.core.avanzar
 import com.cerrojo.core.limitesDe
 import com.cerrojo.datos.Almacen
 import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 private const val SEGUNDOS_DE_FRICCION = 45
 
@@ -58,11 +55,9 @@ class PantallaDeBloqueo : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val paquete = intent.getStringExtra("paquete") ?: return finish()
-        val estado = runCatching { Estado.valueOf(intent.getStringExtra("estado")!!) }
-            .getOrDefault(Estado.ENFRIANDO)
         val almacen = Almacen(this)
         val nombre = nombreDeApp(paquete)
-        val detalle = detalleDelBloqueo(almacen, paquete, estado)
+        val detalle = detalleDelBloqueo(almacen, paquete)
 
         setContent {
             TemaDeSeal {
@@ -101,9 +96,7 @@ class PantallaDeBloqueo : ComponentActivity() {
                         Text(nombre, style = MaterialTheme.typography.headlineMedium)
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            if (estado == Estado.SIN_PRESUPUESTO)
-                                "Se te acabaron los minutos de hoy."
-                            else "Toca descansar. Vuelve luego.",
+                            "Se te acabaron los minutos de hoy.",
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Spacer(Modifier.height(12.dp))
@@ -135,18 +128,12 @@ class PantallaDeBloqueo : ComponentActivity() {
      * el que tocaba: se quejo de que le bloqueaba antes de tiempo y no habia
      * manera de comprobarlo desde el movil.
      */
-    private fun detalleDelBloqueo(almacen: Almacen, paquete: String, estado: Estado): String {
+    private fun detalleDelBloqueo(almacen: Almacen, paquete: String): String {
         val limites = almacen.limites(paquete) ?: limitesDe(30, 1)
-        val e = almacen.estado(paquete)
-        val quedanMin = ((limites.presupuestoMin * 60 + e.extraHoySeg - e.segHoy) / 60).coerceAtLeast(0)
-        return if (estado == Estado.SIN_PRESUPUESTO) {
-            "Has llegado a tu tope de ${enHoras(limites.presupuestoMin)} al día. " +
-                "Vuelve a abrirse a las %02d:00.".format(almacen.horaDeReinicioH)
-        } else {
-            val vuelta = SimpleDateFormat("HH:mm", Locale.US).format(Date(e.finEnfriamientoMs))
-            "Llevas ${enHoras(limites.sesionMin)} seguidos. Puedes volver a las $vuelta. " +
-                "Hoy te quedan ${enHoras(quedanMin)}."
-        }
+        // "Mañana a las 00:00" y no "a las 00:00" a secas: a las 21:00 eso se
+        // leia como "en tres horas".
+        return "Has llegado a tu tope de ${enHoras(limites.presupuestoMin)} al día. " +
+            "Vuelve a abrirse mañana a las %02d:00.".format(almacen.horaDeReinicioH)
     }
 
     private fun nombreDeApp(paquete: String): String = try {

@@ -4,8 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class EstadosTest {
-    private val limites = Limites(objetivoMin = 40, sesionMin = 10, enfriamientoMin = 40, presupuestoMin = 40)
-    private val hoy = "2026-09-22"
+    private val limites = Limites(objetivoMin = 20, presupuestoMin = 20)
+    private val hoy = "2026-10-05"
 
     private fun tics(veces: Int, desde: EstadoApp, ahoraMs: Long = 0L, enPrimerPlano: Boolean = true): EstadoApp {
         var e = desde
@@ -13,85 +13,62 @@ class EstadosTest {
         return e
     }
 
-    @Test fun `usar la app abre una sesion`() {
+    @Test fun `usar la app cuenta para el dia`() {
         val e = tics(1, EstadoApp())
         assertEquals(Estado.EN_SESION, e.estado)
-        assertEquals(1, e.segSesion)
+        assertEquals(1, e.segHoy)
     }
 
     @Test fun `fuera de primer plano no corre el reloj`() {
         val e = tics(30, EstadoApp(), enPrimerPlano = false)
         assertEquals(Estado.LIBRE, e.estado)
-        assertEquals(0, e.segSesion)
+        assertEquals(0, e.segHoy)
     }
 
-    @Test fun `agotar la sesion pasa a enfriamiento`() {
-        val e = tics(10 * 60, EstadoApp())
-        assertEquals(Estado.ENFRIANDO, e.estado)
-        // El enfriamiento cuenta desde el instante del tic que agota la sesion.
-        // Los 600 tics van de 0 a 599_000 ms, asi que ese instante es 599_000,
-        // no 600_000: el reloj arranca en el primer tic, no antes.
-        assertEquals(599_000L + 40 * 60_000L, e.finEnfriamientoMs)
-    }
-
-    @Test fun `cumplido el enfriamiento vuelve a estar libre con la sesion a cero`() {
-        val enfriando = tics(10 * 60, EstadoApp())
-        // Justo en el instante de vencimiento ya esta libre, no un tic despues.
-        val despues = avanzar(enfriando, Evento.Tick(false, enfriando.finEnfriamientoMs, hoy), limites)
-        assertEquals(Estado.LIBRE, despues.estado)
-        assertEquals(0, despues.segSesion)
-    }
-
-    /** Consume los 40 minutos de presupuesto del dia en cuatro sesiones. */
-    private fun sinPresupuesto(): EstadoApp {
+    @Test fun `cuatro ratos de cinco minutos con pausas largas agotan un tope de veinte`() {
+        // Lo que paso el 4-oct: ratos sueltos con pausas de mas de 5 min no
+        // bloqueaban nunca. Ahora todo suma.
         var e = EstadoApp()
         var ahora = 0L
         repeat(4) {
-            e = tics(10 * 60, e, ahoraMs = ahora)
-            ahora += 10 * 60 * 1000L
-            e = avanzar(e, Evento.Tick(false, ahora + 40 * 60_000L, hoy), limites)
-            ahora += 40 * 60_000L
+            e = tics(5 * 60, e, ahoraMs = ahora)
+            ahora += 5 * 60_000L
+            e = tics(1, e, ahoraMs = ahora + 30 * 60_000L, enPrimerPlano = false)
+            ahora += 30 * 60_000L
         }
-        return e
-    }
-
-    @Test fun `agotar el presupuesto del dia bloquea hasta el dia siguiente`() {
-        val e = sinPresupuesto()
         assertEquals(Estado.SIN_PRESUPUESTO, e.estado)
-        assertEquals(40 * 60, e.segHoy)
+        assertEquals(20 * 60, e.segHoy)
     }
 
-    @Test fun `salir de la app congela el reloj de sesion, no lo reinicia`() {
-        val enMarcha = tics(120, EstadoApp())
-        assertEquals(120, enMarcha.segSesion)
-
-        val fuera = tics(60, enMarcha, ahoraMs = 120_000L, enPrimerPlano = false)
-        assertEquals(120, fuera.segSesion)
-
-        // Una salida corta no reinicia la sesion: si lo hiciera, el limite se
-        // esquivaria saltando de app y volviendo. Solo una pausa de
-        // PAUSA_QUE_CIERRA_SESION_MS la cierra (test de mas abajo).
-        val vuelta = tics(1, fuera, ahoraMs = 180_000L)
-        assertEquals(121, vuelta.segSesion)
+    @Test fun `bloqueada no se suelta sola por mucho tiempo que pase`() {
+        val agotado = tics(20 * 60, EstadoApp())
+        val horasDespues = tics(1, agotado, ahoraMs = 5 * 3_600_000L, enPrimerPlano = true)
+        assertEquals(Estado.SIN_PRESUPUESTO, horasDespues.estado)
+        assertEquals(20 * 60, horasDespues.segHoy)
     }
 
-    @Test fun `sin presupuesto tambien se reinicia al cambiar de dia`() {
-        val agotado = sinPresupuesto()
-        val manana = avanzar(agotado, Evento.Tick(false, 0L, "2026-09-23"), limites)
+    @Test fun `el dia siguiente vuelve a estar libre`() {
+        val agotado = tics(20 * 60, EstadoApp())
+        val manana = avanzar(agotado, Evento.Tick(false, 0L, "2026-10-06"), limites)
         assertEquals(Estado.LIBRE, manana.estado)
         assertEquals(0, manana.segHoy)
     }
 
-    @Test fun `sin presupuesto tambien se puede desbloquear con friccion`() {
-        val agotado = sinPresupuesto()
+    @Test fun `el desbloqueo con friccion da cinco minutos y vuelve a bloquear`() {
+        val agotado = tics(20 * 60, EstadoApp())
         val desbloqueado = avanzar(agotado, Evento.Desbloqueo, limites)
         assertEquals(Estado.EN_SESION, desbloqueado.estado)
 
-        // Los cinco minutos tienen que llegar a los dos relojes: si solo
-        // subiera el de sesion, el presupuesto del dia volveria a cortar al
-        // primer tic.
         val casi = tics(5 * 60 - 1, desbloqueado, ahoraMs = 1_000L)
         assertEquals(Estado.EN_SESION, casi.estado)
+        assertEquals(Estado.SIN_PRESUPUESTO, tics(1, casi, ahoraMs = 400_000L).estado)
+    }
+
+    @Test fun `tras desbloquear, dejar la app un rato no devuelve tiempo`() {
+        val desbloqueado = avanzar(tics(20 * 60, EstadoApp()), Evento.Desbloqueo, limites)
+        val fuera = tics(1, desbloqueado, ahoraMs = 60 * 60_000L, enPrimerPlano = false)
+        val e = tics(5 * 60, fuera, ahoraMs = 61 * 60_000L)
+        assertEquals(Estado.SIN_PRESUPUESTO, e.estado)
     }
 
     @Test fun `el desbloqueo no hace nada si la app no esta bloqueada`() {
@@ -99,69 +76,14 @@ class EstadosTest {
         assertEquals(libre, avanzar(libre, Evento.Desbloqueo, limites))
     }
 
-    @Test fun `cambiar de dia lo reinicia todo`() {
-        val gastado = tics(10 * 60, EstadoApp())
-        val manana = avanzar(gastado, Evento.Tick(false, 0L, "2026-09-23"), limites)
-        assertEquals(Estado.LIBRE, manana.estado)
-        assertEquals(0, manana.segHoy)
-        assertEquals(0, manana.segSesion)
+    @Test fun `un estado de descanso de una version anterior se libera`() {
+        val viejo = EstadoApp(estado = Estado.ENFRIANDO, segHoy = 60, dia = hoy)
+        assertEquals(Estado.LIBRE, avanzar(viejo, Evento.Tick(false, 0L, hoy), limites).estado)
     }
 
-    @Test fun `el desbloqueo con friccion da cinco minutos mas`() {
-        val enfriando = tics(10 * 60, EstadoApp())
-        val desbloqueado = avanzar(enfriando, Evento.Desbloqueo, limites)
-        assertEquals(Estado.EN_SESION, desbloqueado.estado)
-
-        val casi = tics(5 * 60 - 1, desbloqueado, ahoraMs = 2_000L)
-        assertEquals(Estado.EN_SESION, casi.estado)
-        val agotado = tics(1, casi, ahoraMs = 2_000L + (5 * 60 - 1) * 1000L)
-        assertEquals(Estado.ENFRIANDO, agotado.estado)
-    }
-
-    @Test fun `salir cinco minutos cierra la sesion y la siguiente empieza de cero`() {
-        val usada = tics(6 * 60, EstadoApp())
-        assertEquals(360, usada.segSesion)
-        val vuelta = 6 * 60 * 1000L + PAUSA_QUE_CIERRA_SESION_MS
-        val e = avanzar(usada, Evento.Tick(true, vuelta, hoy), limites)
-        assertEquals(Estado.EN_SESION, e.estado)
-        assertEquals(1, e.segSesion)
-        // El presupuesto del dia no se reinicia: solo la sesion.
-        assertEquals(361, e.segHoy)
-    }
-
-    @Test fun `una salida corta no cierra la sesion`() {
-        val usada = tics(6 * 60, EstadoApp())
-        val vuelta = 6 * 60 * 1000L + 2 * 60_000L
-        val e = avanzar(usada, Evento.Tick(true, vuelta, hoy), limites)
-        assertEquals(361, e.segSesion)
-    }
-
-    @Test fun `ratos sueltos separados por pausas largas no bloquean`() {
-        // Sesion de 10 min: tres ratos de 6 separados por pausas de 10 nunca
-        // llegan a 10 seguidos. Antes sumaban 18 y bloqueaban.
-        var e = EstadoApp()
-        var ahora = 0L
-        repeat(3) {
-            e = tics(6 * 60, e, ahoraMs = ahora)
-            ahora += 6 * 60 * 1000L + 10 * 60_000L
-        }
-        assertEquals(Estado.EN_SESION, e.estado)
-        assertEquals(18 * 60, e.segHoy)
-    }
-
-    @Test fun `con la app fuera la pausa larga deja el estado libre`() {
-        val usada = tics(60, EstadoApp())
-        val e = avanzar(usada, Evento.Tick(false, 60_000L + PAUSA_QUE_CIERRA_SESION_MS, hoy), limites)
-        assertEquals(Estado.LIBRE, e.estado)
-        assertEquals(0, e.segSesion)
-    }
-
-    @Test fun `desbloquear tras un descanso largo da cinco minutos, no una sesion entera`() {
-        val enfriando = tics(10 * 60, EstadoApp())
-        val desbloqueado = avanzar(enfriando, Evento.Desbloqueo, limites)
-        // Vuelve a la app 20 minutos despues de bloquearse.
-        val vuelta = enfriando.finEnfriamientoMs - 20 * 60_000L
-        val e = tics(5 * 60, desbloqueado, ahoraMs = vuelta)
-        assertEquals(Estado.ENFRIANDO, e.estado)
+    @Test fun `bajar el tope por debajo de lo usado bloquea aunque la app no este delante`() {
+        val usada = tics(15 * 60, EstadoApp())
+        val e = avanzar(usada, Evento.Tick(false, 0L, hoy), Limites(10, 10))
+        assertEquals(Estado.SIN_PRESUPUESTO, e.estado)
     }
 }

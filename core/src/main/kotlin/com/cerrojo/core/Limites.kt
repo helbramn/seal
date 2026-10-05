@@ -13,8 +13,6 @@ const val DIAS_MINIMOS_DE_HISTORIAL = 3
 @kotlinx.serialization.Serializable
 data class Limites(
     val objetivoMin: Int,
-    val sesionMin: Int,
-    val enfriamientoMin: Int,
     val presupuestoMin: Int,
 )
 
@@ -43,14 +41,11 @@ fun limitesDe(media: Int, semana: Int, sueloMin: Int = SUELO_POR_DEFECTO_MIN): L
 }
 
 /**
- * Sesion y descanso a partir de un tope diario. Lo usa el calculo automatico
- * y tambien el tope que el usuario elige a mano para una app: "no puedo
- * elegir cuanto tiempo darle a cada app" (1-oct) — el automatico sale de tu
- * media y baja cada lunes, y a veces lo que quieres es un numero fijo.
+ * Limites a partir de un tope diario. Lo usa el calculo automatico y tambien
+ * el tope que el usuario elige a mano para una app. Ya no hay sesiones ni
+ * descansos (ver Estados.kt): el tope del dia es la unica regla.
  */
 fun limitesConObjetivo(objetivoMin: Int): Limites {
     val objetivo = objetivoMin.coerceAtLeast(1)
-    val sesion = (objetivo / 4.0).roundToInt().coerceIn(5, 20)
-    val enfriamiento = (sesion * 4).coerceIn(20, 90)
-    return Limites(objetivo, sesion, enfriamiento, objetivo)
+    return Limites(objetivo, objetivo)
 }

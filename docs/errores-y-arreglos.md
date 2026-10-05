@@ -207,6 +207,21 @@ invisible sobre el negro del fondo.
 **Arreglo**: `TemaDeSeal` provee `LocalContentColor` con el color de texto de
 la web. Una vez, en la raíz, para todas las pantallas.
 
+### Sesiones que se esquivaban solas (v1.6)
+
+**Qué se rompía**: con sesiones de "X min seguidos" más la pausa de 5 min de
+la v1.4, ratos sueltos de 5 minutos no bloqueaban nunca: solo contaban para el
+tope del día (150 min en Instagram). Y tras "Desbloquear igualmente" en un
+descanso, dejar la app 5 minutos cerraba la sesión y daba otra entera: el
+descanso desaparecía. El usuario lo vivió como "me pone que me lo bloquea y ni
+una hora, se desengancha de repente".
+
+**Arreglo**: una sola regla, el tope del día. Todo minuto con la app delante
+suma, en los ratos que sea, y al llegar se bloquea hasta el día siguiente. Sin
+sesiones, descansos ni pausas. El selector de tope va de 5 en 5 hasta 1 h para
+poder poner 20 min. Y el WebView tiene ahora `WebChromeClient`: sin él no
+mostraba los `confirm()` de la web y el botón de borrar tareas no hacía nada.
+
 ## Errores de interpretación, no de código
 
 ### Iconos inventados en vez de usar la referencia

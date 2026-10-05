@@ -3,28 +3,26 @@ package com.cerrojo.core
 const val BONUS_DESBLOQUEO_SEG = 5 * 60
 
 /**
- * Salir de la app al menos este tiempo cierra la sesion: la siguiente vez
- * empieza de cero. Ajustes promete "X minutos seguidos", y sin esto el reloj
- * de sesion sumaba todos los ratos del dia hasta el siguiente descanso — tres
- * ratos sueltos de 7 minutos bloqueaban 80 minutos sin haber estado nunca 20
- * seguidos. Las salidas cortas (contestar un mensaje) no cuentan como pausa,
- * para que entrar y salir no sirva de trampa. Elegido por el usuario el 1-oct.
+ * Una sola regla: el tope del dia. Cada segundo con la app delante suma, da
+ * igual en cuantos ratos, y al llegar al tope se bloquea hasta el dia
+ * siguiente.
+ *
+ * Antes habia ademas sesiones de "X minutos seguidos" con descanso, y desde la
+ * v1.4 una pausa de 5 min que cerraba la sesion. El 5-oct el usuario lo tumbo:
+ * cuatro ratos de 5 min no le bloqueaban nada, y dejar la app 5 min tras un
+ * desbloqueo devolvia una sesion entera — el descanso se esquivaba solo. Lo
+ * que pidio es esto: "si he llegado al consumo, se me tiene que bloquear".
+ *
+ * ENFRIANDO queda solo para leer estados guardados por versiones anteriores.
  */
-const val PAUSA_QUE_CIERRA_SESION_MS = 5 * 60_000L
-
 enum class Estado { LIBRE, EN_SESION, ENFRIANDO, SIN_PRESUPUESTO }
 
 @kotlinx.serialization.Serializable
 data class EstadoApp(
     val estado: Estado = Estado.LIBRE,
-    val segSesion: Int = 0,
     val segHoy: Int = 0,
-    val extraSesionSeg: Int = 0,
     val extraHoySeg: Int = 0,
-    val finEnfriamientoMs: Long = 0L,
     val dia: String = "",
-    /** Ultimo tic con la app delante. Con valor por defecto: los estados ya guardados siguen leyendose. */
-    val ultimoUsoMs: Long = 0L,
 )
 
 sealed interface Evento {
@@ -35,58 +33,31 @@ sealed interface Evento {
 }
 
 fun avanzar(previo: EstadoApp, evento: Evento, limites: Limites): EstadoApp = when (evento) {
-    // Solo desbloquea lo que esta bloqueado. Si llega dos veces seguidas, o si
-    // llega cuando el enfriamiento ya habia vencido por su cuenta, no regala
-    // otros cinco minutos: la maquina se defiende sola en vez de fiarse de que
-    // la interfaz no dispare el evento de mas.
+    // Solo desbloquea lo que esta bloqueado: si llega dos veces seguidas no
+    // regala otros cinco minutos.
     is Evento.Desbloqueo -> if (!previo.bloqueada()) previo else previo.copy(
         estado = Estado.EN_SESION,
-        extraSesionSeg = previo.extraSesionSeg + BONUS_DESBLOQUEO_SEG,
         extraHoySeg = previo.extraHoySeg + BONUS_DESBLOQUEO_SEG,
-        finEnfriamientoMs = 0L,
-        // A cero: el tiempo que paso bloqueada no es una pausa. Si contara, un
-        // desbloqueo tras 5 min de descanso reiniciaria la sesion y daria la
-        // sesion entera en vez de los 5 minutos de la friccion.
-        ultimoUsoMs = 0L,
     )
 
     is Evento.Tick -> {
-        var e = if (evento.dia != previo.dia) {
-            EstadoApp(dia = evento.dia)
-        } else previo
+        var e = if (evento.dia != previo.dia) EstadoApp(dia = evento.dia) else previo
 
-        if (e.estado == Estado.ENFRIANDO && evento.ahoraMs >= e.finEnfriamientoMs) {
-            e = e.copy(estado = Estado.LIBRE, segSesion = 0, extraSesionSeg = 0, finEnfriamientoMs = 0L)
-        }
+        // Un descanso de una version anterior: ya no existen, se libera.
+        if (e.estado == Estado.ENFRIANDO) e = e.copy(estado = Estado.LIBRE)
 
-        // Pausa larga: la sesion se cierra. Se mira tanto con la app fuera (para
-        // que el estado pase a LIBRE) como al volver a ella (por si el servicio
-        // estuvo muerto durante la pausa y no hubo tics en medio).
-        if (e.estado == Estado.EN_SESION && e.ultimoUsoMs > 0L &&
-            evento.ahoraMs - e.ultimoUsoMs >= PAUSA_QUE_CIERRA_SESION_MS
-        ) {
-            e = e.copy(estado = Estado.LIBRE, segSesion = 0, extraSesionSeg = 0)
-        }
-
-        if (evento.enPrimerPlano && (e.estado == Estado.LIBRE || e.estado == Estado.EN_SESION)) {
-            e = e.copy(
-                estado = Estado.EN_SESION,
-                segSesion = e.segSesion + 1,
-                segHoy = e.segHoy + 1,
-                ultimoUsoMs = evento.ahoraMs,
-            )
-
+        // Tambien con la app fuera: si el tope se baja a mano por debajo de lo
+        // ya usado, queda bloqueada sin esperar a que se vuelva a abrir.
+        if (e.estado != Estado.SIN_PRESUPUESTO && e.segHoy >= limites.presupuestoMin * 60 + e.extraHoySeg) {
+            e = e.copy(estado = Estado.SIN_PRESUPUESTO)
+        } else if (evento.enPrimerPlano && e.estado != Estado.SIN_PRESUPUESTO) {
+            e = e.copy(estado = Estado.EN_SESION, segHoy = e.segHoy + 1)
             if (e.segHoy >= limites.presupuestoMin * 60 + e.extraHoySeg) {
                 e = e.copy(estado = Estado.SIN_PRESUPUESTO)
-            } else if (e.segSesion >= limites.sesionMin * 60 + e.extraSesionSeg) {
-                e = e.copy(
-                    estado = Estado.ENFRIANDO,
-                    finEnfriamientoMs = evento.ahoraMs + limites.enfriamientoMin * 60_000L,
-                )
             }
         }
         e
     }
 }
 
-fun EstadoApp.bloqueada(): Boolean = estado == Estado.ENFRIANDO || estado == Estado.SIN_PRESUPUESTO
+fun EstadoApp.bloqueada(): Boolean = estado == Estado.SIN_PRESUPUESTO

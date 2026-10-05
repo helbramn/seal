@@ -22,8 +22,6 @@ class LimitesTest {
     @Test fun `la primera semana el objetivo es la media`() {
         val l = limitesDe(media = 80, semana = 1)
         assertEquals(80, l.objetivoMin)
-        assertEquals(20, l.sesionMin)
-        assertEquals(80, l.enfriamientoMin)
         assertEquals(80, l.presupuestoMin)
     }
 
@@ -54,23 +52,9 @@ class LimitesTest {
         assertEquals(-1, semana(instalacion, LocalDate.of(2026, 9, 10)))
     }
 
-    @Test fun `la sesion y el enfriamiento se mantienen dentro de sus topes`() {
-        val corto = limitesDe(media = 8, semana = 1)
-        assertEquals(5, corto.sesionMin)
-        assertEquals(20, corto.enfriamientoMin)
-
-        val largo = limitesDe(media = 600, semana = 1)
-        assertEquals(20, largo.sesionMin)
-        // 80, no 90: el tope de sesion (20 min) hace que sesion*4 nunca alcance
-        // el maximo de 90 que fija la spec, asi que ese tope nunca llega a morder.
-        assertEquals(80, largo.enfriamientoMin)
-    }
-
-    @Test fun `un tope elegido a mano da su sesion y su descanso`() {
-        assertEquals(Limites(80, 20, 80, 80), limitesConObjetivo(80))
-        assertEquals(Limites(30, 8, 32, 30), limitesConObjetivo(30))
-        // Topes pequenos: la sesion no baja de 5 ni el descanso de 20.
-        assertEquals(Limites(10, 5, 20, 10), limitesConObjetivo(10))
+    @Test fun `un tope elegido a mano es el presupuesto del dia`() {
+        assertEquals(Limites(80, 80), limitesConObjetivo(80))
+        assertEquals(Limites(1, 1), limitesConObjetivo(0))
     }
 
     @Test fun `el calculo automatico da lo mismo que el tope con su objetivo`() {

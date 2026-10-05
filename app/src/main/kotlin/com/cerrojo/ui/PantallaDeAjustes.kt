@@ -22,7 +22,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.cerrojo.core.PAUSA_QUE_CIERRA_SESION_MS
 import com.cerrojo.core.SUELO_POR_DEFECTO_MIN
 import com.cerrojo.core.limitesConObjetivo
 import com.cerrojo.core.limitesDe
@@ -186,7 +185,7 @@ fun PantallaDeAjustes() {
             Desplegable("Cómo funciona", abiertoAlPrincipio = vigiladas.isEmpty()) {
                 Paso("1", "Mide", "Seal mira cuánto has usado cada app en los últimos 14 días. Ese es tu punto de partida: no se inventa un tope, usa el tuyo.")
                 Paso("2", "Aprieta", "Tu objetivo diario empieza siendo exactamente esa media —la primera semana no te quita nada— y baja un 10 % cada lunes, hasta un mínimo de ${SUELO_POR_DEFECTO_MIN} min al día. Nunca baja de ahí. Si prefieres un número fijo, elígelo tú en cada app con − y +.")
-                Paso("3", "Corta", "Esto sí aprieta desde el primer día: al abrir una app vigilada empieza una sesión de como mucho 20 min seguidos. Al agotarla se bloquea y hay que esperar. Si la dejas 5 min, la sesión se cierra y la siguiente empieza de cero; el tope del día sigue contando todo.")
+                Paso("3", "Corta", "Cada minuto con la app delante cuenta para su tope del día, da igual en cuántos ratos. Al llegar al tope se bloquea hasta el día siguiente.")
                 Paso("4", "Fricción", "La pantalla de bloqueo tiene una salida, pero cuesta: 45 segundos mirándola. Está para que abrirla sin pensar deje de ser gratis.")
                 Text(
                     "Si Seal se queda sin permisos, o el móvil mata el servicio, lo dirás en «Comprobaciones», abajo. No se calla nunca.",
@@ -356,12 +355,9 @@ private fun FilaDeApp(
             if (limites == null) {
                 Text("Calculando tus límites…", style = MaterialTheme.typography.bodySmall)
             } else {
-                // En palabras, no tres cifras sueltas. "Objetivo 203 · sesion
-                // 20 · espera 80" no dice que pasa ni cuando.
                 Text(
-                    "Puedes usarla ${enHoras(limites.sesionMin)} seguidos. Después se bloquea " +
-                        "${enHoras(limites.enfriamientoMin)} y vuelve a abrirse sola. " +
-                        "Si la dejas ${PAUSA_QUE_CIERRA_SESION_MS / 60_000} min, la cuenta empieza de cero.",
+                    "Puedes usarla ${enHoras(limites.presupuestoMin)} al día en total, en los ratos que sea. " +
+                        "Al llegar, se bloquea hasta mañana.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 SelectorDeTope(
@@ -381,14 +377,13 @@ private fun FilaDeApp(
 }
 
 /**
- * Elegir el tope diario de una app a mano: de 15 en 15 minutos, entre 15 min
- * y 4 h. "Automático" vuelve al calculo de siempre. La sesion y el descanso
- * salen del tope con la misma regla de siempre (limitesConObjetivo), y la
- * frase de encima lo dice en cuanto cambia.
+ * Elegir el tope diario de una app a mano: entre 5 min
+ * y 4 h. "Automático" vuelve al calculo de siempre. Hasta 1 h va de 5 en 5:
+ * con saltos de 15 no se podia poner 20 min, justo el tope que queria.
  */
 @Composable
 private fun SelectorDeTope(objetivoMin: Int, fijo: Boolean, alCambiar: (Int?) -> Unit) {
-    val paso = 15
+    val paso = if (objetivoMin <= 60) 5 else 15
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Al día", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
         OutlinedButton(
