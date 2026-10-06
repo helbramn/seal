@@ -125,10 +125,15 @@ class Almacen(context: Context) {
         get() = prefs.getInt("semana", 0)
         set(valor) = prefs.edit().putInt("semana", valor).apply()
 
-    /** Hora a la que empieza el dia nuevo a efectos de presupuesto (spec 4.2). */
-    var horaDeReinicioH: Int
-        get() = prefs.getInt("horaReinicio", 0)
-        set(valor) = prefs.edit().putInt("horaReinicio", valor).apply()
+    /**
+     * Minutos tras la medianoche a los que empieza el dia nuevo: el mismo
+     * corte que la web (`settings.inicio_dia_minutos`, 05:00). Lo refresca el
+     * espejo de avisos una vez por hora. Antes la barra se vaciaba a las 00:00
+     * y la web cerraba el dia a las 05:00.
+     */
+    var inicioDiaMin: Int
+        get() = prefs.getInt("inicioDiaMin", 300)
+        set(valor) = prefs.edit().putInt("inicioDiaMin", valor).apply()
 
     var ultimaComprobacionMs: Long
         get() = prefs.getLong("latido", 0L)

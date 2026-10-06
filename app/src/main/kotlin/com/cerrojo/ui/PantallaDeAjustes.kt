@@ -204,7 +204,7 @@ fun PantallaDeAjustes() {
             Desplegable("Cómo funciona", abiertoAlPrincipio = vigiladas.isEmpty()) {
                 Paso("1", "Mide", "Seal mira cuánto has usado cada app en los últimos 14 días. Ese es tu punto de partida: no se inventa un tope, usa el tuyo.")
                 Paso("2", "Carga", "Cada minuto con la app delante llena su barra. Cuando sales, la barra se queda donde estaba: no baja. Tú eliges de cuántos minutos es.")
-                Paso("3", "Corta", "Barra llena = la app se bloquea el tiempo que elijas, dentro de un rango que sale de tu media: de un tercio de lo que la usas al día a la media entera (baja un 10 % cada lunes, nunca de ${SUELO_POR_DEFECTO_MIN} min). Al acabar, la barra vuelve a cero. También se vacía al empezar el día.")
+                Paso("3", "Corta", "Barra llena = la app se bloquea el tiempo que elijas, dentro de un rango que sale de tu media: de un tercio de lo que la usas al día a la media entera (baja un 10 % cada lunes, nunca de ${SUELO_POR_DEFECTO_MIN} min). Al acabar, la barra vuelve a cero. También se vacía a las 5:00, cuando empieza el día (a la misma hora que en la web).")
                 Paso("4", "Fricción", "La pantalla de bloqueo tiene una salida, pero cuesta: 45 segundos mirándola. Está para que abrirla sin pensar deje de ser gratis.")
                 Text(
                     "Si Seal se queda sin permisos, o el móvil mata el servicio, lo dirás en «Comprobaciones», abajo. No se calla nunca.",

@@ -173,16 +173,20 @@ class EspejoDeAvisos(private val context: Context) {
 
     /**
      * Inicio del dia lógico en minutos, leido de settings una vez por hora y
-     * guardado: sin red se sigue con el ultimo bueno (o las 05:00 de serie).
+     * guardado en el Almacen, donde tambien lo usa la barra de mana: sin red
+     * se sigue con el ultimo bueno (o las 05:00 de serie).
      */
     private fun corteMin(): Int {
         val ahora = System.currentTimeMillis()
         if (ahora - prefs.getLong("corteLeidoMs", 0L) > 3_600_000L) {
             sesion.obtener("/rest/v1/settings?select=inicio_dia_minutos")
                 ?.let { runCatching { JSONArray(it).getJSONObject(0).getInt("inicio_dia_minutos") }.getOrNull() }
-                ?.let { prefs.edit().putInt("corteMin", it).putLong("corteLeidoMs", ahora).apply() }
+                ?.let {
+                    almacen.inicioDiaMin = it
+                    prefs.edit().putLong("corteLeidoMs", ahora).apply()
+                }
         }
-        return prefs.getInt("corteMin", 300)
+        return almacen.inicioDiaMin
     }
 
     /** Las marcas de "ya avisado" son por dia; las de ayer no valen para nada. */

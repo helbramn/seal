@@ -253,9 +253,9 @@ class ServicioDeVigilancia : Service() {
         return texto to pct
     }
 
-    /** El dia nuevo empieza a la hora de reinicio configurada, no a medianoche. */
+    /** El dia nuevo (barra a cero) empieza a la misma hora que en la web. */
     private fun diaLogico(ahora: Long): String =
-        formatoDia.format(Date(ahora - almacen.horaDeReinicioH * 3_600_000L))
+        formatoDia.format(Date(ahora - almacen.inicioDiaMin * 60_000L))
 
     /**
      * Recalcular cuesta 14 consultas por app, asi que solo se hace cuando el

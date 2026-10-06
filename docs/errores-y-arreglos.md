@@ -255,6 +255,13 @@ día nuevo y no veía ni esa tarea ni los avisos que seguían llegando.
 **Arreglo**: "hoy" se calcula restando el corte, que se lee de `settings` una
 vez por hora y se guarda (sin red se usa el último bueno, o las 05:00).
 
+### La barra de maná se vaciaba a medianoche y la web a las 05:00 (v2.0)
+`diaLogico` ya restaba una "hora de reinicio" (`horaDeReinicioH`), pero valía 0
+y nada la cambiaba, así que la barra se vaciaba a las 00:00. Ahora usa el mismo
+corte que la web: `Almacen.inicioDiaMin`, que el espejo lee de `settings` una
+vez por hora (05:00 de serie). Al instalar la v2.0 entre las 00:00 y las 05:00,
+la barra se vacía una vez, porque el día guardado pasa de "hoy" a "ayer".
+
 ## Errores de interpretación, no de código
 
 ### Iconos inventados en vez de usar la referencia
