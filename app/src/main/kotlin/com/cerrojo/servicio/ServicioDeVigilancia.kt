@@ -20,8 +20,7 @@ import androidx.core.app.ServiceCompat
 import com.cerrojo.core.Evento
 import com.cerrojo.core.bloqueada
 import com.cerrojo.core.avanzar
-import com.cerrojo.core.limitesConObjetivo
-import com.cerrojo.core.limitesDe
+import com.cerrojo.core.carga
 import com.cerrojo.core.mediaDeUso
 import com.cerrojo.core.semana
 import com.cerrojo.datos.Almacen
@@ -208,7 +207,8 @@ class ServicioDeVigilancia : Service() {
             ultimoAvisoDeLatido = ahora
             almacen.ultimaComprobacionMs = ahora
             val nm = getSystemService(NotificationManager::class.java)
-            nm.notify(ID_NOTIFICACION, notificacion(textoDeLatido(ahora)))
+            val barra = barraMasLlena()
+            nm.notify(ID_NOTIFICACION, notificacion(barra?.first ?: textoDeLatido(ahora), barra?.second))
         }
     }
 
@@ -231,6 +231,26 @@ class ServicioDeVigilancia : Service() {
         reintentosFallidosSeguidos >= REINTENTOS_FALLIDOS_PARA_AVISAR ->
             "el bloqueo no consigue aparecer — revisa \"mostrar sobre otras apps\""
         else -> "vigilando · última comprobación ${formatoHora.format(Date(ahora))}"
+    }
+
+    /**
+     * La barra de mana de la app vigilada mas cargada, para la notificacion
+     * fija: se ve como se llena sin abrir Seal. Si algo va mal (permiso,
+     * bloqueo que no aparece) manda el aviso del latido, no la barra.
+     */
+    private fun barraMasLlena(): Pair<String, Int>? {
+        if (lector.tienePermisoDeUso() == false || reintentosFallidosSeguidos >= REINTENTOS_FALLIDOS_PARA_AVISAR) return null
+        val (paquete, estado, limites) = almacen.appsVigiladas()
+            .mapNotNull { p -> almacen.limites(p)?.let { Triple(p, almacen.estado(p), it) } }
+            .maxByOrNull { (_, e, l) -> e.carga(l) } ?: return null
+        val nombre = runCatching {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(paquete, 0)).toString()
+        }.getOrDefault(paquete)
+        val pct = (estado.carga(limites) * 100).toInt()
+        val texto = if (estado.bloqueada())
+            "$nombre bloqueada hasta las ${SimpleDateFormat("HH:mm", Locale.US).format(Date(estado.finBloqueoMs))}"
+        else "$nombre · ${estado.segBarra / 60} de ${limites.barraMin} min de barra"
+        return texto to pct
     }
 
     /** El dia nuevo empieza a la hora de reinicio configurada, no a medianoche. */
@@ -264,12 +284,9 @@ class ServicioDeVigilancia : Service() {
         Thread {
             try {
                 for (paquete in almacen.appsVigiladas()) {
-                    // Con tope elegido a mano no hay nada que recalcular el
-                    // lunes: el numero es el que el usuario puso.
                     almacen.guardarLimites(
                         paquete,
-                        almacen.topeFijo(paquete)?.let { limitesConObjetivo(it) }
-                            ?: limitesDe(mediaDeUso(lector.minutosPorDia(paquete)), n, almacen.suelo(paquete)),
+                        almacen.limitesPara(paquete, mediaDeUso(lector.minutosPorDia(paquete)), n),
                     )
                 }
                 // Solo se marca la semana como resuelta si el bucle entero
@@ -295,10 +312,11 @@ class ServicioDeVigilancia : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(canal)
     }
 
-    private fun notificacion(texto: String): Notification =
+    private fun notificacion(texto: String, progreso: Int? = null): Notification =
         NotificationCompat.Builder(this, CANAL)
             .setContentTitle("Seal")
             .setContentText(texto)
+            .apply { if (progreso != null) setProgress(100, progreso, false) }
             .setSmallIcon(R.drawable.ic_aviso)
             .setOngoing(true)
             // Sin esto "sin permiso de uso — abre Seal" mandaba a abrir una

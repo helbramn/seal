@@ -22,7 +22,6 @@ class LimitesTest {
     @Test fun `la primera semana el objetivo es la media`() {
         val l = limitesDe(media = 80, semana = 1)
         assertEquals(80, l.objetivoMin)
-        assertEquals(80, l.presupuestoMin)
     }
 
     @Test fun `el objetivo baja un diez por ciento por semana`() {
@@ -52,9 +51,24 @@ class LimitesTest {
         assertEquals(-1, semana(instalacion, LocalDate.of(2026, 9, 10)))
     }
 
-    @Test fun `un tope elegido a mano es el presupuesto del dia`() {
-        assertEquals(Limites(80, 80), limitesConObjetivo(80))
-        assertEquals(Limites(1, 1), limitesConObjetivo(0))
+    @Test fun `la barra por defecto es una sexta parte de la media, entre 10 y 60`() {
+        assertEquals(25, limitesConObjetivo(150).barraMin)
+        assertEquals(10, limitesConObjetivo(30).barraMin)
+        assertEquals(60, limitesConObjetivo(600).barraMin)
+    }
+
+    @Test fun `el bloqueo va de un tercio de la media a la media entera`() {
+        assertEquals(50..150, rangoDeBloqueo(150))
+        // Con poco uso el rango no se queda en nada.
+        assertEquals(15..30, rangoDeBloqueo(20))
+        assertEquals(100, limitesConObjetivo(150).bloqueoMin)
+    }
+
+    @Test fun `lo elegido a mano manda, pero el bloqueo no sale del rango`() {
+        val l = limitesConObjetivo(150, barraFija = 20, bloqueoFijo = 60)
+        assertEquals(Limites(150, 20, 60), l)
+        assertEquals(150, limitesConObjetivo(150, bloqueoFijo = 999).bloqueoMin)
+        assertEquals(50, limitesConObjetivo(150, bloqueoFijo = 5).bloqueoMin)
     }
 
     @Test fun `el calculo automatico da lo mismo que el tope con su objetivo`() {

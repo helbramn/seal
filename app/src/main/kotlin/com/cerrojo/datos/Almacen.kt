@@ -4,6 +4,7 @@ import android.content.Context
 import com.cerrojo.core.EstadoApp
 import com.cerrojo.core.Limites
 import com.cerrojo.core.SUELO_POR_DEFECTO_MIN
+import com.cerrojo.core.limitesDe
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -55,16 +56,23 @@ class Almacen(context: Context) {
         prefs.edit().putInt("suelo:$paquete", minutos).apply()
 
     /**
-     * Tope diario elegido a mano en Ajustes, o null si va en automatico (de tu
-     * media, bajando cada lunes). Si hay tope, manda el tope.
+     * Tamaño de la barra y duracion del bloqueo elegidos a mano en Ajustes, o
+     * null si van en automatico (de tu media). Claves nuevas a proposito: el
+     * "tope:" de la v1.6 era un tope diario (150 min) y leido como barra no
+     * bloquearia nunca.
      */
-    fun topeFijo(paquete: String): Int? =
-        prefs.getInt("tope:$paquete", 0).takeIf { it > 0 }
+    fun barraFija(paquete: String): Int? = prefs.getInt("barra:$paquete", 0).takeIf { it > 0 }
+    fun bloqueoFijo(paquete: String): Int? = prefs.getInt("bloqueo:$paquete", 0).takeIf { it > 0 }
 
-    fun guardarTopeFijo(paquete: String, minutos: Int?) =
-        prefs.edit().apply {
-            if (minutos == null) remove("tope:$paquete") else putInt("tope:$paquete", minutos)
-        }.apply()
+    fun guardarBarraFija(paquete: String, minutos: Int?) = guardarFijo("barra:$paquete", minutos)
+    fun guardarBloqueoFijo(paquete: String, minutos: Int?) = guardarFijo("bloqueo:$paquete", minutos)
+
+    private fun guardarFijo(clave: String, minutos: Int?) =
+        prefs.edit().apply { if (minutos == null) remove(clave) else putInt(clave, minutos) }.apply()
+
+    /** El unico sitio que junta media, suelo y lo elegido a mano. */
+    fun limitesPara(paquete: String, media: Int, semana: Int): Limites =
+        limitesDe(media, semana, suelo(paquete), barraFija(paquete), bloqueoFijo(paquete))
 
     /**
      * Cuando se toco por ultima vez la vigilancia de esta app EN ESTE MOVIL.

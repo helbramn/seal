@@ -23,8 +23,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.cerrojo.core.SUELO_POR_DEFECTO_MIN
-import com.cerrojo.core.limitesConObjetivo
-import com.cerrojo.core.limitesDe
+import com.cerrojo.core.carga
+import com.cerrojo.core.rangoDeBloqueo
 import com.cerrojo.core.mediaDeUso
 import com.cerrojo.datos.Almacen
 import com.cerrojo.sistema.LectorDeUso
@@ -111,6 +111,25 @@ fun PantallaDeAjustes() {
     var refresco by remember { mutableIntStateOf(0) }
     var verTodas by remember { mutableStateOf(false) }
 
+    // La barra de cada app, en vivo: la carga el servicio cada segundo y aqui
+    // se relee cada dos para verla subir.
+    var cargas by remember { mutableStateOf(emptyMap<String, Pair<Float, String>>()) }
+    LaunchedEffect(vigiladas) {
+        while (true) {
+            cargas = vigiladas.mapNotNull { p ->
+                almacen.limites(p)?.let { l ->
+                    val e = almacen.estado(p)
+                    val texto = if (e.estado == com.cerrojo.core.Estado.ENFRIANDO)
+                        "Bloqueada hasta las " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+                            .format(java.util.Date(e.finBloqueoMs))
+                    else "${e.segBarra / 60} de ${l.barraMin} min"
+                    p to (e.carga(l) to texto)
+                }
+            }.toMap()
+            delay(2_000)
+        }
+    }
+
     // Listar las apps instaladas resuelve un intent y un nombre por cada una, y
     // ademas hay que leer cuanto se usa cada una: en el hilo principal eso
     // congela el primer fotograma de la pantalla.
@@ -172,7 +191,7 @@ fun PantallaDeAjustes() {
         item {
             Text("Seal", style = MaterialTheme.typography.displayLarge)
             Text(
-                "Te pone un tope de tiempo en las apps que elijas, y ese tope baja solo cada semana.",
+                "Cada app vigilada tiene una barra que se llena mientras la usas. Cuando se llena, se bloquea un rato.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -184,8 +203,8 @@ fun PantallaDeAjustes() {
         item {
             Desplegable("Cómo funciona", abiertoAlPrincipio = vigiladas.isEmpty()) {
                 Paso("1", "Mide", "Seal mira cuánto has usado cada app en los últimos 14 días. Ese es tu punto de partida: no se inventa un tope, usa el tuyo.")
-                Paso("2", "Aprieta", "Tu objetivo diario empieza siendo exactamente esa media —la primera semana no te quita nada— y baja un 10 % cada lunes, hasta un mínimo de ${SUELO_POR_DEFECTO_MIN} min al día. Nunca baja de ahí. Si prefieres un número fijo, elígelo tú en cada app con − y +.")
-                Paso("3", "Corta", "Cada minuto con la app delante cuenta para su tope del día, da igual en cuántos ratos. Al llegar al tope se bloquea hasta el día siguiente.")
+                Paso("2", "Carga", "Cada minuto con la app delante llena su barra. Cuando sales, la barra se queda donde estaba: no baja. Tú eliges de cuántos minutos es.")
+                Paso("3", "Corta", "Barra llena = la app se bloquea el tiempo que elijas, dentro de un rango que sale de tu media: de un tercio de lo que la usas al día a la media entera (baja un 10 % cada lunes, nunca de ${SUELO_POR_DEFECTO_MIN} min). Al acabar, la barra vuelve a cero. También se vacía al empezar el día.")
                 Paso("4", "Fricción", "La pantalla de bloqueo tiene una salida, pero cuesta: 45 segundos mirándola. Está para que abrirla sin pensar deje de ser gratis.")
                 Text(
                     "Si Seal se queda sin permisos, o el móvil mata el servicio, lo dirás en «Comprobaciones», abajo. No se calla nunca.",
@@ -245,9 +264,18 @@ fun PantallaDeAjustes() {
                         }
                     }
                 },
-                tope = remember(refresco, app.paquete) { almacen.topeFijo(app.paquete) },
-                alCambiarTope = { minutos ->
-                    almacen.guardarTopeFijo(app.paquete, minutos)
+                carga = if (app.paquete in vigiladas) cargas[app.paquete] else null,
+                barraFija = remember(refresco, app.paquete) { almacen.barraFija(app.paquete) != null },
+                bloqueoFijo = remember(refresco, app.paquete) { almacen.bloqueoFijo(app.paquete) != null },
+                alCambiarBarra = { minutos ->
+                    almacen.guardarBarraFija(app.paquete, minutos)
+                    alcance.launch(Dispatchers.IO) {
+                        almacen.guardarLimites(app.paquete, limitesAutomaticosOFijos(almacen, lector, app.paquete))
+                        refresco++
+                    }
+                },
+                alCambiarBloqueo = { minutos ->
+                    almacen.guardarBloqueoFijo(app.paquete, minutos)
                     alcance.launch(Dispatchers.IO) {
                         almacen.guardarLimites(app.paquete, limitesAutomaticosOFijos(almacen, lector, app.paquete))
                         refresco++
@@ -282,14 +310,8 @@ fun PantallaDeAjustes() {
     }
 }
 
-/** Tope elegido a mano si lo hay; si no, el automatico de la media. */
 private fun limitesAutomaticosOFijos(almacen: Almacen, lector: LectorDeUso, paquete: String) =
-    almacen.topeFijo(paquete)?.let { limitesConObjetivo(it) }
-        ?: limitesDe(
-            mediaDeUso(lector.minutosPorDia(paquete)),
-            almacen.semanaDeLosLimites.coerceAtLeast(1),
-            almacen.suelo(paquete),
-        )
+    almacen.limitesPara(paquete, mediaDeUso(lector.minutosPorDia(paquete)), almacen.semanaDeLosLimites.coerceAtLeast(1))
 
 @Composable
 private fun Paso(numero: String, titulo: String, texto: String) {
@@ -317,8 +339,11 @@ private fun FilaDeApp(
     activa: Boolean,
     limites: com.cerrojo.core.Limites?,
     alCambiar: (Boolean) -> Unit,
-    tope: Int?,
-    alCambiarTope: (Int?) -> Unit,
+    carga: Pair<Float, String>?,
+    barraFija: Boolean,
+    bloqueoFijo: Boolean,
+    alCambiarBarra: (Int?) -> Unit,
+    alCambiarBloqueo: (Int?) -> Unit,
 ) {
     Column(
         Modifier
@@ -355,19 +380,25 @@ private fun FilaDeApp(
             if (limites == null) {
                 Text("Calculando tus límites…", style = MaterialTheme.typography.bodySmall)
             } else {
+                // La barra de mana, en vivo.
+                if (carga != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LinearProgressIndicator(
+                            progress = { carga.first },
+                            modifier = Modifier.weight(1f).height(8.dp),
+                            color = if (carga.first >= 1f) MaterialTheme.colorScheme.primary else ORO,
+                            trackColor = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(carga.second, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Selector("Barra", limites.barraMin, 5..120, barraFija, alCambiarBarra)
+                val rango = rangoDeBloqueo(limites.objetivoMin)
+                Selector("Bloqueo", limites.bloqueoMin, rango, bloqueoFijo, alCambiarBloqueo)
                 Text(
-                    "Puedes usarla ${enHoras(limites.presupuestoMin)} al día en total, en los ratos que sea. " +
-                        "Al llegar, se bloquea hasta mañana.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                SelectorDeTope(
-                    objetivoMin = limites.objetivoMin,
-                    fijo = tope != null,
-                    alCambiar = alCambiarTope,
-                )
-                Text(
-                    if (tope != null) "Tope elegido por ti: no cambia solo."
-                    else "Automático: sale de tu media (${enHoras(app.minutosDia)}) y baja cada lunes.",
+                    "El bloqueo puede ir de ${enHoras(rango.first)} a ${enHoras(rango.last)}: sale de tu media. " +
+                        "Sin elegir, la barra es una sexta parte de la media y el bloqueo, el centro del rango.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -376,38 +407,39 @@ private fun FilaDeApp(
     }
 }
 
-/**
- * Elegir el tope diario de una app a mano: entre 5 min
- * y 4 h. "Automático" vuelve al calculo de siempre. Hasta 1 h va de 5 en 5:
- * con saltos de 15 no se podia poner 20 min, justo el tope que queria.
- */
+/** − valor + de 5 en 5 dentro de su rango. "Volver a automático" vuelve al calculo. */
 @Composable
-private fun SelectorDeTope(objetivoMin: Int, fijo: Boolean, alCambiar: (Int?) -> Unit) {
-    val paso = if (objetivoMin <= 60) 5 else 15
+private fun Selector(titulo: String, valorMin: Int, rango: IntRange, fijo: Boolean, alCambiar: (Int?) -> Unit) {
+    val paso = 5
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Al día", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Column(Modifier.weight(1f)) {
+            Text(titulo, style = MaterialTheme.typography.titleSmall)
+            if (fijo) {
+                Text(
+                    "Volver a automático",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { alCambiar(null) },
+                )
+            }
+        }
         OutlinedButton(
-            onClick = { alCambiar(((objetivoMin - paso) / paso * paso).coerceAtLeast(paso)) },
+            onClick = { alCambiar(((valorMin - paso) / paso * paso).coerceIn(rango)) },
             contentPadding = PaddingValues(0.dp),
             modifier = Modifier.size(40.dp),
         ) { Text("−", style = MaterialTheme.typography.titleLarge) }
         Text(
-            enHoras(objetivoMin),
+            enHoras(valorMin),
             style = MaterialTheme.typography.titleLarge,
             color = ORO,
             textAlign = TextAlign.Center,
             modifier = Modifier.width(96.dp),
         )
         OutlinedButton(
-            onClick = { alCambiar(((objetivoMin + paso) / paso * paso).coerceAtMost(240)) },
+            onClick = { alCambiar(((valorMin + paso) / paso * paso).coerceIn(rango)) },
             contentPadding = PaddingValues(0.dp),
             modifier = Modifier.size(40.dp),
         ) { Text("+", style = MaterialTheme.typography.titleLarge) }
-    }
-    if (fijo) {
-        TextButton(onClick = { alCambiar(null) }) {
-            Text("Volver a automático", style = MaterialTheme.typography.bodySmall)
-        }
     }
 }
 

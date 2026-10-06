@@ -95,8 +95,16 @@ class PantallaDeBloqueo : ComponentActivity() {
                     ) {
                         Text(nombre, style = MaterialTheme.typography.headlineMedium)
                         Spacer(Modifier.height(12.dp))
+                        // La barra, llena: lo que ha pasado se ve antes de leerlo.
+                        LinearProgressIndicator(
+                            progress = { 1f },
+                            modifier = Modifier.fillMaxWidth().height(10.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                        Spacer(Modifier.height(12.dp))
                         Text(
-                            "Se te acabaron los minutos de hoy.",
+                            "Barra llena.",
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Spacer(Modifier.height(12.dp))
@@ -130,10 +138,10 @@ class PantallaDeBloqueo : ComponentActivity() {
      */
     private fun detalleDelBloqueo(almacen: Almacen, paquete: String): String {
         val limites = almacen.limites(paquete) ?: limitesDe(30, 1)
-        // "Mañana a las 00:00" y no "a las 00:00" a secas: a las 21:00 eso se
-        // leia como "en tres horas".
-        return "Has llegado a tu tope de ${enHoras(limites.presupuestoMin)} al día. " +
-            "Vuelve a abrirse mañana a las %02d:00.".format(almacen.horaDeReinicioH)
+        val e = almacen.estado(paquete)
+        val vuelta = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(e.finBloqueoMs))
+        return "Has cargado ${enHoras(limites.barraMin)} de uso. Bloqueada ${enHoras(limites.bloqueoMin)}: " +
+            "vuelve a abrirse a las $vuelta, con la barra vacía. Hoy llevas ${enHoras(e.segHoy / 60)}."
     }
 
     private fun nombreDeApp(paquete: String): String = try {

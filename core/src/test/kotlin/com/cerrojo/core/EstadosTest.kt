@@ -4,8 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class EstadosTest {
-    private val limites = Limites(objetivoMin = 20, presupuestoMin = 20)
-    private val hoy = "2026-10-05"
+    /** Barra de 20 min, bloqueo de 60. */
+    private val limites = Limites(objetivoMin = 120, barraMin = 20, bloqueoMin = 60)
+    private val hoy = "2026-10-06"
 
     private fun tics(veces: Int, desde: EstadoApp, ahoraMs: Long = 0L, enPrimerPlano: Boolean = true): EstadoApp {
         var e = desde
@@ -13,62 +14,75 @@ class EstadosTest {
         return e
     }
 
-    @Test fun `usar la app cuenta para el dia`() {
-        val e = tics(1, EstadoApp())
+    @Test fun `usar la app carga la barra`() {
+        val e = tics(60, EstadoApp())
         assertEquals(Estado.EN_SESION, e.estado)
-        assertEquals(1, e.segHoy)
+        assertEquals(60, e.segBarra)
+        assertEquals(0.05f, e.carga(limites), 0.001f)
     }
 
-    @Test fun `fuera de primer plano no corre el reloj`() {
-        val e = tics(30, EstadoApp(), enPrimerPlano = false)
-        assertEquals(Estado.LIBRE, e.estado)
-        assertEquals(0, e.segHoy)
+    @Test fun `fuera de la app la barra ni carga ni baja`() {
+        val cargada = tics(5 * 60, EstadoApp())
+        val horasFuera = tics(1, cargada, ahoraMs = 3 * 3_600_000L, enPrimerPlano = false)
+        assertEquals(5 * 60, horasFuera.segBarra)
+        assertEquals(Estado.EN_SESION, tics(1, horasFuera, ahoraMs = 3 * 3_600_000L).estado)
     }
 
-    @Test fun `cuatro ratos de cinco minutos con pausas largas agotan un tope de veinte`() {
-        // Lo que paso el 4-oct: ratos sueltos con pausas de mas de 5 min no
-        // bloqueaban nunca. Ahora todo suma.
+    @Test fun `cuatro ratos de cinco minutos llenan una barra de veinte`() {
         var e = EstadoApp()
         var ahora = 0L
         repeat(4) {
             e = tics(5 * 60, e, ahoraMs = ahora)
-            ahora += 5 * 60_000L
-            e = tics(1, e, ahoraMs = ahora + 30 * 60_000L, enPrimerPlano = false)
-            ahora += 30 * 60_000L
+            ahora += 5 * 60_000L + 30 * 60_000L
         }
-        assertEquals(Estado.SIN_PRESUPUESTO, e.estado)
+        assertEquals(Estado.ENFRIANDO, e.estado)
+    }
+
+    @Test fun `llena bloquea el tiempo elegido y luego la barra vuelve a cero`() {
+        val llena = tics(20 * 60, EstadoApp())
+        assertEquals(Estado.ENFRIANDO, llena.estado)
+        // El bloqueo cuenta desde el tic que la llena (el ultimo, en 1_199_000).
+        assertEquals(1_199_000L + 60 * 60_000L, llena.finBloqueoMs)
+
+        val aMitad = tics(1, llena, ahoraMs = llena.finBloqueoMs - 1, enPrimerPlano = true)
+        assertEquals(Estado.ENFRIANDO, aMitad.estado)
+
+        val despues = avanzar(llena, Evento.Tick(false, llena.finBloqueoMs, hoy), limites)
+        assertEquals(Estado.LIBRE, despues.estado)
+        assertEquals(0, despues.segBarra)
+    }
+
+    @Test fun `bloqueada no carga ni cuenta`() {
+        val llena = tics(20 * 60, EstadoApp())
+        val e = tics(60, llena, ahoraMs = 2_000_000L)
+        assertEquals(20 * 60, e.segBarra)
         assertEquals(20 * 60, e.segHoy)
     }
 
-    @Test fun `bloqueada no se suelta sola por mucho tiempo que pase`() {
-        val agotado = tics(20 * 60, EstadoApp())
-        val horasDespues = tics(1, agotado, ahoraMs = 5 * 3_600_000L, enPrimerPlano = true)
-        assertEquals(Estado.SIN_PRESUPUESTO, horasDespues.estado)
-        assertEquals(20 * 60, horasDespues.segHoy)
+    @Test fun `el dia nuevo vacia la barra`() {
+        val medio = tics(10 * 60, EstadoApp())
+        val manana = avanzar(medio, Evento.Tick(false, 0L, "2026-10-07"), limites)
+        assertEquals(Estado.LIBRE, manana.estado)
+        assertEquals(0, manana.segBarra)
     }
 
-    @Test fun `el dia siguiente vuelve a estar libre`() {
-        val agotado = tics(20 * 60, EstadoApp())
-        val manana = avanzar(agotado, Evento.Tick(false, 0L, "2026-10-06"), limites)
-        assertEquals(Estado.LIBRE, manana.estado)
+    @Test fun `un bloqueo que cruza la medianoche se cumple`() {
+        val llena = tics(20 * 60, EstadoApp())
+        val manana = avanzar(llena, Evento.Tick(true, llena.finBloqueoMs - 1, "2026-10-07"), limites)
+        assertEquals(Estado.ENFRIANDO, manana.estado)
         assertEquals(0, manana.segHoy)
     }
 
-    @Test fun `el desbloqueo con friccion da cinco minutos y vuelve a bloquear`() {
-        val agotado = tics(20 * 60, EstadoApp())
-        val desbloqueado = avanzar(agotado, Evento.Desbloqueo, limites)
-        assertEquals(Estado.EN_SESION, desbloqueado.estado)
+    @Test fun `desbloquear da cinco minutos y vuelve a bloquear entero`() {
+        val llena = tics(20 * 60, EstadoApp())
+        val desbloqueada = avanzar(llena, Evento.Desbloqueo, limites)
+        assertEquals(Estado.EN_SESION, desbloqueada.estado)
 
-        val casi = tics(5 * 60 - 1, desbloqueado, ahoraMs = 1_000L)
+        val casi = tics(5 * 60 - 1, desbloqueada, ahoraMs = 2_000_000L)
         assertEquals(Estado.EN_SESION, casi.estado)
-        assertEquals(Estado.SIN_PRESUPUESTO, tics(1, casi, ahoraMs = 400_000L).estado)
-    }
-
-    @Test fun `tras desbloquear, dejar la app un rato no devuelve tiempo`() {
-        val desbloqueado = avanzar(tics(20 * 60, EstadoApp()), Evento.Desbloqueo, limites)
-        val fuera = tics(1, desbloqueado, ahoraMs = 60 * 60_000L, enPrimerPlano = false)
-        val e = tics(5 * 60, fuera, ahoraMs = 61 * 60_000L)
-        assertEquals(Estado.SIN_PRESUPUESTO, e.estado)
+        val otra = tics(1, casi, ahoraMs = 3_000_000L)
+        assertEquals(Estado.ENFRIANDO, otra.estado)
+        assertEquals(3_000_000L + 60 * 60_000L, otra.finBloqueoMs)
     }
 
     @Test fun `el desbloqueo no hace nada si la app no esta bloqueada`() {
@@ -76,14 +90,14 @@ class EstadosTest {
         assertEquals(libre, avanzar(libre, Evento.Desbloqueo, limites))
     }
 
-    @Test fun `un estado de descanso de una version anterior se libera`() {
-        val viejo = EstadoApp(estado = Estado.ENFRIANDO, segHoy = 60, dia = hoy)
-        assertEquals(Estado.LIBRE, avanzar(viejo, Evento.Tick(false, 0L, hoy), limites).estado)
+    @Test fun `achicar la barra por debajo de lo cargado bloquea aunque la app no este delante`() {
+        val cargada = tics(15 * 60, EstadoApp())
+        val e = avanzar(cargada, Evento.Tick(false, 0L, hoy), Limites(120, 10, 60))
+        assertEquals(Estado.ENFRIANDO, e.estado)
     }
 
-    @Test fun `bajar el tope por debajo de lo usado bloquea aunque la app no este delante`() {
-        val usada = tics(15 * 60, EstadoApp())
-        val e = avanzar(usada, Evento.Tick(false, 0L, hoy), Limites(10, 10))
-        assertEquals(Estado.SIN_PRESUPUESTO, e.estado)
+    @Test fun `un estado de la v1_6 sin presupuesto se libera`() {
+        val viejo = EstadoApp(estado = Estado.SIN_PRESUPUESTO, segHoy = 60, dia = hoy)
+        assertEquals(Estado.LIBRE, avanzar(viejo, Evento.Tick(false, 0L, hoy), limites).estado)
     }
 }

@@ -230,6 +230,21 @@ minutos y sin push web es el único canal del móvil: llegó a las 18:54.
 
 **Arreglo**: el espejo mira cada minuto.
 
+### Un tope diario que no llegaba nunca (v1.8)
+
+**Qué se rompía**: en la v1.6, sin tope elegido a mano, el tope del día salía
+de la media de uso (unas 2 h en Instagram). Un día con 1 h 22 min no bloqueaba
+ni una vez: el código hacía lo que decía, pero la regla no servía.
+
+**Cambio, pedido por el usuario**: una barra de maná por app. Se llena con
+cada segundo de uso, se congela fuera de la app (no baja) y, al llenarse,
+bloquea el tiempo elegido dentro de un rango que sale de la media (de un tercio
+a la media entera). Al acabar el bloqueo, y al empezar el día, vuelve a cero.
+El tamaño de la barra lo elige él (por defecto, una sexta parte de la media).
+Se ve en Ajustes y en la notificación fija. Las claves de "lo elegido a mano"
+son nuevas (`barra:` y `bloqueo:`): el `tope:` de la v1.6 eran 150 min diarios y
+leído como barra no habría bloqueado nunca.
+
 ## Errores de interpretación, no de código
 
 ### Iconos inventados en vez de usar la referencia

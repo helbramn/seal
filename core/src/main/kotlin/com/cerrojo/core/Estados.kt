@@ -3,25 +3,30 @@ package com.cerrojo.core
 const val BONUS_DESBLOQUEO_SEG = 5 * 60
 
 /**
- * Una sola regla: el tope del dia. Cada segundo con la app delante suma, da
- * igual en cuantos ratos, y al llegar al tope se bloquea hasta el dia
- * siguiente.
+ * La barra de mana (pedida el 6-oct). Cada segundo con la app delante la
+ * llena; fuera de la app se queda donde esta, no baja. Al llenarse, la app se
+ * bloquea [Limites.bloqueoMin] minutos; al acabar el bloqueo la barra vuelve a
+ * cero. Tambien vuelve a cero al empezar el dia.
  *
- * Antes habia ademas sesiones de "X minutos seguidos" con descanso, y desde la
- * v1.4 una pausa de 5 min que cerraba la sesion. El 5-oct el usuario lo tumbo:
- * cuatro ratos de 5 min no le bloqueaban nada, y dejar la app 5 min tras un
- * desbloqueo devolvia una sesion entera — el descanso se esquivaba solo. Lo
- * que pidio es esto: "si he llegado al consumo, se me tiene que bloquear".
+ * Por que: con el tope diario de la v1.6, que salia de su media (unas 2 h), en
+ * un dia con 1 h 22 min de Instagram no le bloqueo nunca. La barra corta
+ * mucho antes y varias veces al dia.
  *
- * ENFRIANDO queda solo para leer estados guardados por versiones anteriores.
+ * ENFRIANDO es "barra llena, bloqueada". EN_SESION es "cargando".
+ * SIN_PRESUPUESTO queda solo para leer estados de la v1.6.
  */
 enum class Estado { LIBRE, EN_SESION, ENFRIANDO, SIN_PRESUPUESTO }
 
 @kotlinx.serialization.Serializable
 data class EstadoApp(
     val estado: Estado = Estado.LIBRE,
+    /** Segundos de barra cargados. */
+    val segBarra: Int = 0,
+    /** Uso total de hoy, solo para enseñarlo. */
     val segHoy: Int = 0,
-    val extraHoySeg: Int = 0,
+    /** Lo que da "Desbloquear igualmente": cinco minutos mas de barra. */
+    val extraSeg: Int = 0,
+    val finBloqueoMs: Long = 0L,
     val dia: String = "",
 )
 
@@ -34,30 +39,45 @@ sealed interface Evento {
 
 fun avanzar(previo: EstadoApp, evento: Evento, limites: Limites): EstadoApp = when (evento) {
     // Solo desbloquea lo que esta bloqueado: si llega dos veces seguidas no
-    // regala otros cinco minutos.
+    // regala otros cinco minutos. Al gastarlos, vuelve a bloquear entero.
     is Evento.Desbloqueo -> if (!previo.bloqueada()) previo else previo.copy(
         estado = Estado.EN_SESION,
-        extraHoySeg = previo.extraHoySeg + BONUS_DESBLOQUEO_SEG,
+        extraSeg = previo.extraSeg + BONUS_DESBLOQUEO_SEG,
+        finBloqueoMs = 0L,
     )
 
     is Evento.Tick -> {
-        var e = if (evento.dia != previo.dia) EstadoApp(dia = evento.dia) else previo
+        var e = previo
+        if (evento.dia != e.dia) {
+            // Dia nuevo: el uso de hoy a cero, y la barra tambien salvo que
+            // este bloqueada — un bloqueo que cruza la medianoche se cumple.
+            e = if (e.estado == Estado.ENFRIANDO) e.copy(segHoy = 0, dia = evento.dia)
+            else EstadoApp(dia = evento.dia)
+        }
+        if (e.estado == Estado.SIN_PRESUPUESTO) e = e.copy(estado = Estado.LIBRE, segBarra = 0)
 
-        // Un descanso de una version anterior: ya no existen, se libera.
-        if (e.estado == Estado.ENFRIANDO) e = e.copy(estado = Estado.LIBRE)
+        if (e.estado == Estado.ENFRIANDO && evento.ahoraMs >= e.finBloqueoMs) {
+            e = e.copy(estado = Estado.LIBRE, segBarra = 0, extraSeg = 0, finBloqueoMs = 0L)
+        }
 
-        // Tambien con la app fuera: si el tope se baja a mano por debajo de lo
-        // ya usado, queda bloqueada sin esperar a que se vuelva a abrir.
-        if (e.estado != Estado.SIN_PRESUPUESTO && e.segHoy >= limites.presupuestoMin * 60 + e.extraHoySeg) {
-            e = e.copy(estado = Estado.SIN_PRESUPUESTO)
-        } else if (evento.enPrimerPlano && e.estado != Estado.SIN_PRESUPUESTO) {
-            e = e.copy(estado = Estado.EN_SESION, segHoy = e.segHoy + 1)
-            if (e.segHoy >= limites.presupuestoMin * 60 + e.extraHoySeg) {
-                e = e.copy(estado = Estado.SIN_PRESUPUESTO)
-            }
+        if (evento.enPrimerPlano && !e.bloqueada()) {
+            e = e.copy(estado = Estado.EN_SESION, segBarra = e.segBarra + 1, segHoy = e.segHoy + 1)
+        }
+        // Tambien con la app fuera: si se achica la barra por debajo de lo ya
+        // cargado, bloquea sin esperar a que se vuelva a abrir.
+        if (!e.bloqueada() && e.segBarra > 0 && e.segBarra >= limites.barraMin * 60 + e.extraSeg) {
+            e = e.copy(
+                estado = Estado.ENFRIANDO,
+                finBloqueoMs = evento.ahoraMs + limites.bloqueoMin * 60_000L,
+            )
         }
         e
     }
 }
 
-fun EstadoApp.bloqueada(): Boolean = estado == Estado.SIN_PRESUPUESTO
+fun EstadoApp.bloqueada(): Boolean = estado == Estado.ENFRIANDO
+
+/** De 0 a 1, para pintar la barra. */
+fun EstadoApp.carga(limites: Limites): Float =
+    if (bloqueada()) 1f
+    else (segBarra.toFloat() / (limites.barraMin * 60 + extraSeg).coerceAtLeast(1)).coerceIn(0f, 1f)
