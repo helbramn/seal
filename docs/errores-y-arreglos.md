@@ -245,6 +245,16 @@ Se ve en Ajustes y en la notificación fija. Las claves de "lo elegido a mano"
 son nuevas (`barra:` y `bloqueo:`): el `tope:` de la v1.6 eran 150 min diarios y
 leído como barra no habría bloqueado nunca.
 
+### Pasada la medianoche, el espejo miraba el día equivocado (v1.9)
+La web y el reenganche pasaron a un día lógico que acaba a las 05:00
+(`settings.inicio_dia_minutos`): una tarea a las 00:30 es del día anterior, y lo
+que sigue sin hacer baja la barra también después de medianoche. El espejo
+calculaba "hoy" con la fecha del reloj, así que a las 00:30 pedía las filas del
+día nuevo y no veía ni esa tarea ni los avisos que seguían llegando.
+
+**Arreglo**: "hoy" se calcula restando el corte, que se lee de `settings` una
+vez por hora y se guarda (sin red se usa el último bueno, o las 05:00).
+
 ## Errores de interpretación, no de código
 
 ### Iconos inventados en vez de usar la referencia

@@ -54,9 +54,13 @@ class EspejoDeAvisos(private val context: Context) {
     }
 
     private fun comprobarDeVerdad() {
+        // El "hoy" de la app es el dia logico: acaba a settings.inicio_dia_minutos
+        // (05:00), no a medianoche. Sin esto, a las 00:30 el espejo pedia las
+        // filas del dia nuevo y se perdia la tarea de esa hora, que es del dia
+        // anterior, y los avisos de lo que sigue sin hacer pasada la medianoche.
         val hoy = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             .apply { timeZone = ZONA }
-            .format(Date())
+            .format(Date(System.currentTimeMillis() - corteMin() * 60_000L))
         olvidarDiasPasados(hoy)
 
         val json = sesion.obtener(
@@ -165,6 +169,20 @@ class EspejoDeAvisos(private val context: Context) {
                 // formulario de entrada que el aviso promete.
                 .setContentIntent(pendingIntent(Principal::class.java, ajustes = true))
                 .build())
+    }
+
+    /**
+     * Inicio del dia lógico en minutos, leido de settings una vez por hora y
+     * guardado: sin red se sigue con el ultimo bueno (o las 05:00 de serie).
+     */
+    private fun corteMin(): Int {
+        val ahora = System.currentTimeMillis()
+        if (ahora - prefs.getLong("corteLeidoMs", 0L) > 3_600_000L) {
+            sesion.obtener("/rest/v1/settings?select=inicio_dia_minutos")
+                ?.let { runCatching { JSONArray(it).getJSONObject(0).getInt("inicio_dia_minutos") }.getOrNull() }
+                ?.let { prefs.edit().putInt("corteMin", it).putLong("corteLeidoMs", ahora).apply() }
+        }
+        return prefs.getInt("corteMin", 300)
     }
 
     /** Las marcas de "ya avisado" son por dia; las de ayer no valen para nada. */
