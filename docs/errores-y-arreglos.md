@@ -262,6 +262,16 @@ corte que la web: `Almacen.inicioDiaMin`, que el espejo lee de `settings` una
 vez por hora (05:00 de serie). Al instalar la v2.0 entre las 00:00 y las 05:00,
 la barra se vacía una vez, porque el día guardado pasa de "hoy" a "ayer".
 
+### YouTube no salía en la lista de apps (v2.1)
+La lista de Ajustes solo enseñaba apps sin `FLAG_SYSTEM`. En los Xiaomi,
+YouTube, Chrome o Gmail vienen de fábrica y siguen marcadas como del sistema
+aunque se actualicen desde Play Store, así que no se podían vigilar, ni con
+"ver todas".
+
+**Arreglo**: sale toda app que se pueda abrir, menos las que sería peligroso
+bloquear: Seal, el escritorio, Ajustes (desde ahí se le quitan los permisos) y
+el marcador por defecto (llamadas de emergencia).
+
 ## Errores de interpretación, no de código
 
 ### Iconos inventados en vez de usar la referencia

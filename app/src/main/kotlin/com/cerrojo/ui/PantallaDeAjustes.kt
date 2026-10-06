@@ -2,7 +2,6 @@ package com.cerrojo.ui
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
@@ -32,7 +31,13 @@ import com.cerrojo.sistema.LectorDeUso
 private data class AppInstalada(
     val paquete: String,
     val nombre: String,
-    val deUsuario: Boolean,
+    /**
+     * Se puede vigilar. Antes era "no es del sistema" (FLAG_SYSTEM), y eso
+     * dejaba fuera YouTube, Chrome o Gmail: en los Xiaomi vienen de fabrica y
+     * siguen marcadas como del sistema aunque se actualicen desde Play Store.
+     * Ahora solo se excluye lo que seria peligroso bloquear (ver noBloqueables).
+     */
+    val elegible: Boolean,
     /**
      * Tu dia tipico con esta app. Sale de mediaDeUso() del core, la MISMA
      * funcion con la que el motor calcula el objetivo: antes esta pantalla
@@ -139,6 +144,17 @@ fun PantallaDeAjustes() {
             val pm = context.packageManager
             val abribles = pm.getInstalledApplications(0)
                 .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
+            // Bloquear cualquiera de estas dejaria el movil inservible o sin
+            // salida: Seal mismo, el escritorio, Ajustes (desde donde se le
+            // quitan los permisos) y el telefono (llamadas de emergencia).
+            val noBloqueables = setOfNotNull(
+                context.packageName,
+                "com.android.settings",
+                pm.resolveActivity(
+                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0
+                )?.activityInfo?.packageName,
+                context.getSystemService(android.telecom.TelecomManager::class.java)?.defaultDialerPackage,
+            )
 
             // Una sola consulta para todas, no una por app: preguntar el uso app
             // por app son cientos de llamadas al sistema y la pantalla tarda
@@ -156,7 +172,7 @@ fun PantallaDeAjustes() {
                 AppInstalada(
                     it.packageName,
                     pm.getApplicationLabel(it).toString(),
-                    (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0,
+                    it.packageName !in noBloqueables,
                     // mediaDeUso devuelve 30 min por defecto con menos de tres
                     // dias de historial, y ese es exactamente el numero con el
                     // que se calcularia el limite. Enseñar otro seria mentir.
@@ -172,7 +188,7 @@ fun PantallaDeAjustes() {
     // candidatas de verdad son las tres primeras.
     val ordenadas = remember(lista, vigiladas, verTodas) {
         lista.orEmpty()
-            .filter { it.deUsuario || it.paquete in vigiladas }
+            .filter { it.elegible || it.paquete in vigiladas }
             .sortedWith(compareByDescending<AppInstalada> { it.paquete in vigiladas }
                 .thenByDescending { it.minutosDia }
                 .thenBy { it.nombre.lowercase() })
