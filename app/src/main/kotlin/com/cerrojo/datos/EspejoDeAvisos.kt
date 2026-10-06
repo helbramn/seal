@@ -17,6 +17,7 @@ import java.util.TimeZone
 
 private const val CANAL = "reenganche"
 private const val AVISO_SESION = -1
+private const val AVISO_CASTIGO = -2
 
 /**
  * La web trata Europe/Madrid como una regla fija (`src/lib/dates.ts`), no la
@@ -79,6 +80,7 @@ class EspejoDeAvisos(private val context: Context) {
         val filas = JSONArray(json)
 
         crearCanal()
+        revisarCastigo()
         for (i in 0 until filas.length()) {
             val fila = filas.getJSONObject(i)
             val id = fila.optString("task_id")
@@ -104,13 +106,13 @@ class EspejoDeAvisos(private val context: Context) {
                 estado == "fallida" -> "Has fallado una obligatoria. La barra ya lo ha notado."
                 // Posponer es una decision del usuario, no un descuido: darle
                 // la lata igual seria castigarle por haber hecho algo.
-                estado == "pospuesta" || estado == "hecha" -> continue
+                estado == "pospuesta" || estado == "hecha" || estado == "no_realizada" -> continue
                 !fila.isNull("reminded_at") -> "Tienes una obligatoria sin marcar. ¿A qué esperas?"
                 else -> continue
             }
             // Marcada o pospuesta no se avisa, aunque el servidor haya dejado
             // texto de un aviso anterior del mismo dia.
-            if (estado == "pospuesta" || estado == "hecha") continue
+            if (estado == "pospuesta" || estado == "hecha" || estado == "no_realizada") continue
 
             val titulo = fila.optString("aviso_titulo").takeIf { it.isNotEmpty() } ?: "Disciplina"
             context.getSystemService(NotificationManager::class.java)
@@ -168,6 +170,34 @@ class EspejoDeAvisos(private val context: Context) {
                 // de Principal), eso rebotaria a la web sin pasar por el
                 // formulario de entrada que el aviso promete.
                 .setContentIntent(pendingIntent(Principal::class.java, ajustes = true))
+                .build())
+    }
+
+    /**
+     * Castigo a 0 de Voluntad: se guarda para que el servicio bloquee, y al
+     * empezar se avisa una vez. Si la lectura falla no se toca nada: mejor
+     * seguir con el ultimo estado conocido que levantar un castigo por un
+     * corte de red.
+     */
+    private fun revisarCastigo() {
+        val json = sesion.obtener("/rest/v1/castigos?select=umbral_salida&terminado_en=is.null") ?: return
+        val filas = runCatching { JSONArray(json) }.getOrNull() ?: return
+        val hasta = if (filas.length() > 0) filas.getJSONObject(0).optInt("umbral_salida", 15) else 0
+        val antes = almacen.castigoHasta
+        almacen.castigoHasta = hasta
+        if (antes == hasta) return
+        val (titulo, texto) = if (hasta > 0)
+            "Voluntad a 0" to "Castigo: todas tus apps vigiladas quedan bloqueadas hasta que tu Voluntad vuelva a $hasta. Haz tus tareas."
+        else
+            "Castigo levantado" to "Tu Voluntad se ha recuperado. Las apps vuelven a funcionar con su barra."
+        context.getSystemService(NotificationManager::class.java)
+            .notify(AVISO_CASTIGO, NotificationCompat.Builder(context, CANAL)
+                .setContentTitle(titulo)
+                .setContentText(texto)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(texto))
+                .setSmallIcon(R.drawable.ic_aviso)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent(Shell::class.java))
                 .build())
     }
 

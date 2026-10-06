@@ -272,6 +272,15 @@ aunque se actualicen desde Play Store, así que no se podían vigilar, ni con
 bloquear: Seal, el escritorio, Ajustes (desde ahí se le quitan los permisos) y
 el marcador por defecto (llamadas de emergencia).
 
+### Castigo a 0 de Voluntad (v2.2)
+No arregla un fallo: es una función pedida el 7-oct. Cuando la Voluntad llega a
+0, la base de datos abre un castigo (`castigos`, trigger `revisar_castigo`) y
+lo cierra cuando vuelve a `settings.umbral_fin_castigo` (15). El espejo lo lee
+cada minuto, avisa al empezar y al acabar, y mientras dura el servicio bloquea
+todas las apps vigiladas sin "desbloquear igualmente". Sin red se queda el
+último estado leído: es mejor que levantar un castigo por un corte. El espejo
+tampoco avisa de las tareas marcadas "no realizada".
+
 ## Errores de interpretación, no de código
 
 ### Iconos inventados en vez de usar la referencia

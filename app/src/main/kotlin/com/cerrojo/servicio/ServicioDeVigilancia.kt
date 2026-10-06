@@ -128,6 +128,8 @@ class ServicioDeVigilancia : Service() {
         val encendida = getSystemService(PowerManager::class.java).isInteractive
         val delante = if (encendida) lector.appEnPrimerPlano() else null
         revisarSemana()
+        // Castigo a 0 de Voluntad: todas las vigiladas bloqueadas (ver Almacen).
+        val castigo = almacen.castigoHasta > 0
 
         for (paquete in almacen.appsVigiladas()) {
             val limites = almacen.limites(paquete) ?: continue
@@ -141,11 +143,11 @@ class ServicioDeVigilancia : Service() {
             // delante varias vueltas despues, la pantalla no llego a salir y
             // hay que reintentarlo: darla por mostrada dejaria la app sin
             // bloquear hasta que el usuario cambiase de aplicacion.
-            if (paquete == delante && nuevo.bloqueada()) {
+            if (paquete == delante && (nuevo.bloqueada() || castigo)) {
                 if (bloqueoMostradoPara != paquete) {
                     bloqueoMostradoPara = paquete
                     ticsDesdeElBloqueo = 0
-                    PantallaDeBloqueo.mostrar(this, paquete, nuevo.estado)
+                    PantallaDeBloqueo.mostrar(this, paquete, nuevo.estado, castigo)
                 } else if (++ticsDesdeElBloqueo >= TICS_PARA_REINTENTAR_BLOQUEO) {
                     bloqueoMostradoPara = null
                     // La app bloqueada seguia delante tras un ciclo entero de

@@ -11,8 +11,8 @@ android {
         applicationId = "com.cerrojo"
         minSdk = 29
         targetSdk = 34
-        versionCode = 21
-        versionName = "2.1"
+        versionCode = 22
+        versionName = "2.2"
     }
     // Firma fija. Sin esto, Gradle firma con una clave de depuracion nueva en
     // cada maquina y cada compilacion, y entonces una version no se instala

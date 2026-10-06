@@ -135,6 +135,17 @@ class Almacen(context: Context) {
         get() = prefs.getInt("inicioDiaMin", 300)
         set(valor) = prefs.edit().putInt("inicioDiaMin", valor).apply()
 
+    /**
+     * Castigo por llegar a 0 de Voluntad (7-oct): la Voluntad con la que se
+     * levanta, o 0 si no hay castigo. Mientras dure, todas las apps vigiladas
+     * se bloquean sin barra y sin "desbloquear igualmente". Lo abre y lo cierra
+     * la base de datos; el espejo lo lee cada minuto. Sin red se queda el
+     * ultimo valor leido.
+     */
+    var castigoHasta: Int
+        get() = prefs.getInt("castigoHasta", 0)
+        set(valor) = prefs.edit().putInt("castigoHasta", valor).apply()
+
     var ultimaComprobacionMs: Long
         get() = prefs.getLong("latido", 0L)
         set(valor) = prefs.edit().putLong("latido", valor).apply()

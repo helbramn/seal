@@ -57,7 +57,13 @@ class PantallaDeBloqueo : ComponentActivity() {
         val paquete = intent.getStringExtra("paquete") ?: return finish()
         val almacen = Almacen(this)
         val nombre = nombreDeApp(paquete)
-        val detalle = detalleDelBloqueo(almacen, paquete)
+        // Castigo a 0 de Voluntad: otro motivo, otro texto, y sin salida de
+        // friccion — se sale haciendo tareas, no esperando 45 segundos.
+        val castigo = intent.getBooleanExtra("castigo", false)
+        val detalle = if (castigo)
+            "Tu Voluntad ha llegado a 0. Todas tus apps vigiladas están bloqueadas hasta que vuelva a " +
+                "${almacen.castigoHasta}. Se sube haciendo tareas."
+        else detalleDelBloqueo(almacen, paquete)
 
         setContent {
             TemaDeSeal {
@@ -104,7 +110,7 @@ class PantallaDeBloqueo : ComponentActivity() {
                         )
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            "Barra llena.",
+                            if (castigo) "Castigo." else "Barra llena.",
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Spacer(Modifier.height(12.dp))
@@ -117,7 +123,9 @@ class PantallaDeBloqueo : ComponentActivity() {
                         Spacer(Modifier.height(40.dp))
                         Button(onClick = { irAlInicio() }, Modifier.fillMaxWidth()) { Text("Salir") }
                         Spacer(Modifier.height(16.dp))
-                        if (restantes < 0) {
+                        if (castigo) {
+                            // Sin "desbloquear igualmente" durante el castigo.
+                        } else if (restantes < 0) {
                             TextButton(onClick = { restantes = SEGUNDOS_DE_FRICCION }) {
                                 Text("Desbloquear igualmente")
                             }
@@ -156,11 +164,12 @@ class PantallaDeBloqueo : ComponentActivity() {
     override fun onBackPressed() = irAlInicio()
 
     companion object {
-        fun mostrar(context: Context, paquete: String, estado: Estado) {
+        fun mostrar(context: Context, paquete: String, estado: Estado, castigo: Boolean = false) {
             context.startActivity(
                 Intent(context, PantallaDeBloqueo::class.java)
                     .putExtra("paquete", paquete)
                     .putExtra("estado", estado.name)
+                    .putExtra("castigo", castigo)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             )
         }
