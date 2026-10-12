@@ -143,11 +143,14 @@ class ServicioDeVigilancia : Service() {
             // delante varias vueltas despues, la pantalla no llego a salir y
             // hay que reintentarlo: darla por mostrada dejaria la app sin
             // bloquear hasta que el usuario cambiase de aplicacion.
-            if (paquete == delante && (nuevo.bloqueada() || castigo)) {
+            // El castigo no toca WhatsApp: pedido del usuario. Llamadas y Seal
+            // ya no se pueden vigilar (noBloqueables en PantallaDeAjustes).
+            val castigada = castigo && paquete !in setOf("com.whatsapp", "com.whatsapp.w4b")
+            if (paquete == delante && (nuevo.bloqueada() || castigada)) {
                 if (bloqueoMostradoPara != paquete) {
                     bloqueoMostradoPara = paquete
                     ticsDesdeElBloqueo = 0
-                    PantallaDeBloqueo.mostrar(this, paquete, nuevo.estado, castigo)
+                    PantallaDeBloqueo.mostrar(this, paquete, nuevo.estado, castigada)
                 } else if (++ticsDesdeElBloqueo >= TICS_PARA_REINTENTAR_BLOQUEO) {
                     bloqueoMostradoPara = null
                     // La app bloqueada seguia delante tras un ciclo entero de
